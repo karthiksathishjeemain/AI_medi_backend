@@ -55,7 +55,7 @@ app.register_blueprint(patient_bp)
 
 # Create a blueprint for MFA-related routes
 mfa_bp = Blueprint('mfa', __name__)
-
+JWT_EXPIRATION = datetime.timedelta(minutes=60*6)  # 360 minutes
 def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -80,12 +80,37 @@ def token_required(f):
             current_user = user_ref.to_dict()
             current_user['id'] = current_user_id
             
+        except jwt.ExpiredSignatureError:
+            return jsonify({'message': 'Token has expired!', 'code': 'TOKEN_EXPIRED'}), 401
         except Exception as e:
             return jsonify({'message': f'Token is invalid! {str(e)}'}), 401
             
         return f(current_user, *args, **kwargs)
     
     return decorated
+
+@app.route('/api/refresh-token', methods=['POST'])
+@token_required
+def refresh_token(current_user):
+    """Endpoint to refresh the JWT token based on current user activity"""
+    
+    # Generate a new JWT token with a fresh expiration time
+    token = jwt.encode(
+        {
+            'user_id': current_user['id'],
+            'email': current_user['email'],
+            'role': current_user.get('role', 'doctor'),
+            'exp': datetime.datetime.now() + JWT_EXPIRATION
+        },
+        app.config['SECRET_KEY'],
+        algorithm="HS256"
+    )
+    
+    return jsonify({
+        'token': token,
+        'message': 'Token refreshed successfully'
+    }), 200
+
 
 def generate_totp(length=6):
     """Generate a numeric TOTP of specified length"""
@@ -293,13 +318,13 @@ def verify_login():
     
     user_data = user_ref.to_dict()
     
-    # Generate JWT token
+    # Generate JWT token with the configured timeout
     token = jwt.encode(
         {
             'user_id': user_id,
             'email': user_data.get('email'),
             'role': user_data.get('role', 'doctor'),
-            'exp': datetime.datetime.utcnow() + datetime.timedelta(days=1)
+            'exp': datetime.datetime.now() + JWT_EXPIRATION
         },
         app.config['SECRET_KEY'],
         algorithm="HS256"
@@ -317,7 +342,6 @@ def verify_login():
             'role': user_data.get('role', 'doctor')
         }
     }), 200
-
 @app.route('/api/resend-totp', methods=['POST'])
 def resend_totp():
     data = request.get_json()
