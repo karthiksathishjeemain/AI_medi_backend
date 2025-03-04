@@ -214,10 +214,8 @@ def save_session_note(current_user, patient_id):
     db = get_db()
     data = request.get_json()
     
-   
     if not data or not data.get('note'):
         return jsonify({'message': 'Session note is required'}), 400
-    
     
     patient_ref = db.collection('patients').document(patient_id).get()
     if not patient_ref.exists:
@@ -235,12 +233,12 @@ def save_session_note(current_user, patient_id):
         'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     }
     
- 
     db.collection('session_notes').document(session_note['id']).set(session_note)
     
     return jsonify({
         'message': 'Session note saved successfully',
-        'session_id': session_note['id']
+        'session_id': session_note['id'],
+        'patient_name': patient_data.get('name')  # Include patient name in the response
     }), 201
 
 @patient_bp.route('/api/session-notes/<session_id>', methods=['PUT'])
@@ -335,7 +333,7 @@ def get_patient_session_notes(current_user, patient_id):
 def get_session_note(current_user, session_id):
     db = get_db()
     
-    
+    # Fetch the session note
     session_ref = db.collection('session_notes').document(session_id).get()
     
     if not session_ref.exists:
@@ -346,5 +344,17 @@ def get_session_note(current_user, session_id):
     # Check if the session belongs to the current doctor
     if session_data.get('doctor_id') != current_user['id']:
         return jsonify({'message': 'Unauthorized access to session note'}), 403
+    
+    # Fetch the patient data
+    patient_id = session_data.get('patient_id')
+    patient_ref = db.collection('patients').document(patient_id).get()
+    
+    if not patient_ref.exists:
+        return jsonify({'message': 'Patient not found'}), 404
+    
+    patient_data = patient_ref.to_dict()
+    
+    # Add patient name to the session data
+    session_data['patient_name'] = patient_data.get('name')
     
     return jsonify(session_data), 200

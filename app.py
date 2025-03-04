@@ -16,6 +16,9 @@ import random
 import string
 from flask_mail import Mail, Message
 
+from logs import logs_bp
+from patient_routes import patient_bp
+
 load_dotenv()
 app = Flask(__name__)
 CORS(app)
@@ -49,10 +52,9 @@ def get_db():
 
 db = get_db()
 
-from patient_routes import patient_bp
-
 app.register_blueprint(patient_bp)
 
+app.register_blueprint(logs_bp)
 # Create a blueprint for MFA-related routes
 mfa_bp = Blueprint('mfa', __name__)
 JWT_EXPIRATION = datetime.timedelta(minutes=60*6)  # 360 minutes
