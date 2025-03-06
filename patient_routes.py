@@ -4,11 +4,44 @@ import jwt
 from functools import wraps
 from datetime import datetime
 import uuid
-
-
+from cryptography.fernet import Fernet
+import base64
+import os
+from dotenv import load_dotenv
+load_dotenv()
 
 patient_bp = Blueprint('patient', __name__)
 
+
+
+# Key management (store this securely, not in your code!)
+def get_encryption_key():
+    # In production, retrieve from secure key management service
+    # For development, you could use environment variable
+    key = os.environ.get('ENCRYPTION_KEY')
+  
+    return key
+
+# Encryption/decryption utilities
+def encrypt_data(data):
+    if not data:
+        return None
+    key = get_encryption_key()
+    f = Fernet(key.encode() if isinstance(key, str) else key)
+    return f.encrypt(data.encode()).decode()
+
+def decrypt_data(encrypted_data):
+    if not encrypted_data:
+        return None
+    key = get_encryption_key()
+    f = Fernet(key.encode() if isinstance(key, str) else key)
+    try:
+        return f.decrypt(encrypted_data.encode()).decode()
+    except Exception as e:
+        print(f"Decryption failed: {str(e)}")
+        # If decryption fails, return the original data
+        # This assumes the data might not be encrypted
+        return encrypted_data
 
 def get_db():
     return firestore.client()
@@ -61,13 +94,13 @@ def add_patient(current_user):
     
     
     new_patient = {
-        'name': data.get('name'),
-        'age': data.get('age'),
-        'doctor_id': current_user['id'], 
-        'created_at': firestore.SERVER_TIMESTAMP,
-        'updated_at': firestore.SERVER_TIMESTAMP
-    }
-    
+    'name': encrypt_data(data.get('name')),  # Encrypted
+    'age': data.get('age'),  # Non-PHI numeric data can stay unencrypted
+    'doctor_id': current_user['id'],
+    'created_at': firestore.SERVER_TIMESTAMP,
+    'updated_at': firestore.SERVER_TIMESTAMP
+}
+
   
     if data.get('gender'):
         new_patient['gender'] = data.get('gender')
@@ -96,7 +129,7 @@ def get_patients(current_user):
         patient_data = doc.to_dict()
         patient_data['id'] = doc.id
         
-     
+        patient_data['name'] = decrypt_data(patient_data.get('name'))  # Decrypted
         if patient_data.get('created_at'):
             patient_data['created_at'] = patient_data['created_at'].strftime('%Y-%m-%d %H:%M:%S')
         if patient_data.get('updated_at'):
@@ -123,6 +156,7 @@ def get_patient(current_user, patient_id):
     
 
     patient_data = patient_ref.to_dict()
+    patient_data['name'] = decrypt_data(patient_data.get('name'))  # Decrypted
     
 
     if patient_data.get('doctor_id') != current_user['id']:
@@ -229,7 +263,7 @@ def save_session_note(current_user, patient_id):
         'id': str(uuid.uuid4()),  
         'patient_id': patient_id,
         'doctor_id': current_user['id'],
-        'note': data.get('note'),
+        'note': encrypt_data(data.get('note')),  # Encrypted
         'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     }
     
@@ -238,7 +272,7 @@ def save_session_note(current_user, patient_id):
     return jsonify({
         'message': 'Session note saved successfully',
         'session_id': session_note['id'],
-        'patient_name': patient_data.get('name')  # Include patient name in the response
+        'patient_name':  decrypt_data(patient_data.get('name'))  # Include patient name in the response
     }), 201
 
 @patient_bp.route('/api/session-notes/<session_id>', methods=['PUT'])
@@ -340,7 +374,7 @@ def get_session_note(current_user, session_id):
         return jsonify({'message': 'Session note not found'}), 404
         
     session_data = session_ref.to_dict()
-    
+    session_data['note'] = decrypt_data(session_data.get('note'))  # Decrypted
     # Check if the session belongs to the current doctor
     if session_data.get('doctor_id') != current_user['id']:
         return jsonify({'message': 'Unauthorized access to session note'}), 403
@@ -355,6 +389,6 @@ def get_session_note(current_user, session_id):
     patient_data = patient_ref.to_dict()
     
     # Add patient name to the session data
-    session_data['patient_name'] = patient_data.get('name')
+    session_data['patient_name'] =  decrypt_data(patient_data.get('name'))
     
     return jsonify(session_data), 200
