@@ -18,6 +18,7 @@ from flask_mail import Mail, Message
 
 from logs import logs_bp
 from patient_routes import patient_bp
+from chat import chat_bp
 
 load_dotenv()
 app = Flask(__name__)
@@ -55,6 +56,8 @@ db = get_db()
 app.register_blueprint(patient_bp)
 
 app.register_blueprint(logs_bp)
+
+app.register_blueprint(chat_bp)
 # Create a blueprint for MFA-related routes
 mfa_bp = Blueprint('mfa', __name__)
 JWT_EXPIRATION = datetime.timedelta(minutes=60*6)  # 360 minutes
